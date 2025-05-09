@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ecommerce-config
+  namespace: default
+data:
+  DATABASE_URL: "postgres://ecomuser:password@db.ecommerce.svc.cluster.local:5432/ecomdb"
+  REDIS_HOST: "redis.ecommerce.svc.cluster.local"
+
