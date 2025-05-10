@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order-service-blue
+  labels:
+    app: order-service
+    environment: blue
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: order-service
+      environment: blue
+  template:
+    metadata:
+      labels:
+        app: order-service
+        environment: blue
+    spec:
+      containers:
+        - name: order-service
+          image: navaneeth2003/order-service:latest
+          ports:
+            - containerPort: 8081
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: order-service-blue
+spec:
+  selector:
+    app: order-service
+    environment: blue
+  ports:
+    - port: 80
+      targetPort: 8081
+

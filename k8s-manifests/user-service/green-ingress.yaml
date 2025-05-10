@@ -1,0 +1,19 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: user-service-green-ingress
+  labels:
+    environment: green
+spec:
+  rules:
+  - host: user-service.a6f0ce1324be545eb822b17bc394ce9b-1781287919.ap-south-1.elb.amazonaws.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: user-service-green
+            port:
+              number: 80
+
