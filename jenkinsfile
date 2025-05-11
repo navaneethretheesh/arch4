@@ -1,0 +1,95 @@
+pipeline {
+    agent any
+    environment {
+        AWS_REGION = 'ap-south-1'
+        ECR_REGISTRY = '869935075210.dkr.ecr.ap-south-1.amazonaws.com'
+        KUBECONFIG_CREDENTIALS = 'kubeconfig-eks'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'master', credentialsId: 'git-https-creds', url: 'https://github.com/navaneethretheesh/arch4.git'
+            }
+        }
+
+        stage('Build Docker Images') {
+            steps {
+                sh 'docker build -t ${ECR_REGISTRY}/product-service:latest ./k8s-manifests/product-service'
+                sh 'docker build -t ${ECR_REGISTRY}/order-service:latest ./k8s-manifests/order-service'
+                sh 'docker build -t ${ECR_REGISTRY}/user-service:latest ./k8s-manifests/user-service'
+            }
+        }
+
+        stage('Login to AWS ECR') {
+    steps {
+        withCredentials([usernamePassword(credentialsId: 'aws-creds', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+            sh '''
+                aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+                aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+                aws configure set default.region ap-south-1
+                aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin 869935075210.dkr.ecr.ap-south-1.amazonaws.com
+            '''
+        }
+    }
+}
+
+        stage('Deploy Blue') {
+            steps {
+                withCredentials([file(credentialsId: KUBECONFIG_CREDENTIALS, variable: 'KUBECONFIG')]) {
+                    sh '''
+                    cat $KUBECONFIG
+                    kubectl apply -f k8s-manifests/product-service/deployment-blue.yaml --kubeconfig=$KUBECONFIG
+                    kubectl apply -f k8s-manifests/product-service/blue-ingress.yaml --kubeconfig=$KUBECONFIG
+                    kubectl apply -f k8s-manifests/order-service/deployment-blue.yaml --kubeconfig=$KUBECONFIG
+                    kubectl apply -f k8s-manifests/order-service/blue-ingress.yaml --kubeconfig=$KUBECONFIG
+                    kubectl apply -f k8s-manifests/user-service/deployment-blue.yaml --kubeconfig=$KUBECONFIG
+                    kubectl apply -f k8s-manifests/user-service/blue-ingress.yaml --kubeconfig=$KUBECONFIG
+                    '''
+                }
+            }
+        }
+
+        stage('Switch to Green') {
+            steps {
+                withCredentials([file(credentialsId: KUBECONFIG_CREDENTIALS, variable: 'KUBECONFIG')]) {
+                    sh '''
+                    cat $KUBECONFIG
+                    kubectl apply -f k8s-manifests/product-service/deployment-green.yaml --kubeconfig=$KUBECONFIG
+                    kubectl apply -f k8s-manifests/product-service/green-ingress.yaml --kubeconfig=$KUBECONFIG
+                    kubectl apply -f k8s-manifests/order-service/deployment-green.yaml --kubeconfig=$KUBECONFIG
+                    kubectl apply -f k8s-manifests/order-service/green-ingress.yaml --kubeconfig=$KUBECONFIG
+                    kubectl apply -f k8s-manifests/user-service/deployment-green.yaml --kubeconfig=$KUBECONFIG
+                    kubectl apply -f k8s-manifests/user-service/green-ingress.yaml --kubeconfig=$KUBECONFIG
+                    '''
+                }
+            }
+        }
+
+        stage('Delete Blue') {
+            steps {
+                withCredentials([file(credentialsId: KUBECONFIG_CREDENTIALS, variable: 'KUBECONFIG')]) {
+                    sh '''
+                    cat $KUBECONFIG
+                    kubectl delete -f k8s-manifests/product-service/deployment-blue.yaml --kubeconfig=$KUBECONFIG || true
+                    kubectl delete -f k8s-manifests/product-service/blue-ingress.yaml --kubeconfig=$KUBECONFIG || true
+                    kubectl delete -f k8s-manifests/order-service/deployment-blue.yaml --kubeconfig=$KUBECONFIG || true
+                    kubectl delete -f k8s-manifests/order-service/blue-ingress.yaml --kubeconfig=$KUBECONFIG || true
+                    kubectl delete -f k8s-manifests/user-service/deployment-blue.yaml --kubeconfig=$KUBECONFIG || true
+                    kubectl delete -f k8s-manifests/user-service/blue-ingress.yaml --kubeconfig=$KUBECONFIG || true
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo '✅ Blue/Green deployment successful.'
+        }
+        failure {
+            echo '❌ Deployment failed. Please check Jenkins logs.'
+        }
+    }
+}
+
